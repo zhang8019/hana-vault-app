@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>凭证保险库</title>
+  <link rel="stylesheet" href="./assets/panel.css">
+  <link rel="stylesheet" href="./assets/app-ui.css">
+</head>
+<body>
+  <main data-hana-app-ui class="vault-app">
+    <header class="topbar"><div><strong>凭证保险库</strong><span id="vaultMeta" class="muted">正在连接…</span></div><div class="actions"><button id="btnSettings" class="ghost">设置</button><button id="btnAudit" class="ghost">审计记录</button><button id="btnLock" class="ghost" disabled>锁定</button></div></header>
+    <section id="lockPanel" class="panel" hidden><p>本保险库默认只读旧库；选择数据库并输入主密码以解锁。主密码只保留在当前进程内存中。</p><div class="row"><label>库名<input id="vaultName" value="default" autocomplete="off"></label><label>主密码<input id="unlockPwd" type="password" autocomplete="current-password" placeholder="主密码"></label><button id="btnUnlock" class="primary">解锁</button></div><p id="unlockError" class="error" aria-live="polite"></p></section>
+    <section id="settingsPanel" class="panel" hidden><h2>安全策略</h2><div class="grid"><label>访问模式<select id="cfgMode"><option value="readonly">只读</option><option value="ask">写入需确认</option><option value="auto">自动读写</option></select></label><label>自动锁定（秒）<input id="cfgLock" type="number" min="60" max="86400" step="60"></label><label>保险库名称<input id="cfgName" autocomplete="off"></label><label class="chk"><input id="cfgCapture" type="checkbox"> 自动捕获线索（只询问，不自动保存）</label><label class="chk"><input id="cfgMutationConsent" type="checkbox"> 本会话允许 App 工具写入（勾选后写入可直接执行）</label></div><p class="hint">v2 不提供保存主密码的选项。默认写入需你在此明确授权；彻底删除仍需再次确认。更改读写策略后立即生效；当前已解锁的库不会因库名设置而静默切换。</p><div class="row"><button id="btnSaveCfg" class="primary">保存策略</button><span id="cfgMsg" class="muted"></span></div></section>
+    <section id="workspace" hidden>
+      <section class="toolbar"><input id="search" type="search" placeholder="搜索标题、账号、主机、标签…"><select id="kindFilter"><option value="">全部类别</option><option value="login">登录</option><option value="ssh">SSH</option><option value="api-key">API Key</option><option value="secret">密钥</option><option value="oauth">OAuth</option><option value="cookie">Cookie</option><option value="card">银行卡</option><option value="custom">自定义</option></select><button id="btnAdd" class="primary">新增凭证</button><button id="btnGen" class="ghost">生成口令</button><button id="btnHealth" class="ghost">安全体检</button><button id="btnTrash" class="ghost">回收站</button><button id="btnExport" class="ghost">加密备份</button></section>
+      <div class="layout"><ul id="entryList" class="entry-list" aria-label="凭证列表"></ul><section id="detail" class="detail"><p class="muted">从左侧选择一条凭证。列表永不携带秘密字段。</p></section></div>
+    </section>
+    <p id="notice" class="notice" role="status"></p>
+  </main>
+  <div id="modal" class="modal" hidden><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><h2 id="modalTitle">凭证</h2><div id="modalBody"></div><div class="row end"><button id="modalCancel" class="ghost">取消</button><button id="modalOk" class="primary">保存</button></div></section></div>
+  <script>window.addEventListener('error',function(){var e=document.getElementById('startup-status');if(e)e.textContent='页面启动失败，请查看 App 校验诊断。'},true)</script>
+  <script type="module" src="./assets/panel.js"></script>
+</body>
+</html>

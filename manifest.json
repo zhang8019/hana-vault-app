@@ -1,0 +1,31 @@
+{
+  "manifestVersion": 2,
+  "id": "hana-vault",
+  "name": "凭证保险库",
+  "version": "0.2.0",
+  "entry": "index.js",
+  "description": "加密凭证保险库 v2：兼容旧库格式，主密码仅存进程内存，支持安全检索、TOTP、审计、安全体检与加密备份。",
+  "minAppVersion": "1.0.6-beta",
+  "icon": "assets/icon.svg",
+  "capabilities": [
+    "app/tools.expose-to-model",
+    "app/ui.clipboard-write",
+    "app/resources.write"
+  ],
+  "contributes": {
+    "cards": [
+      {
+        "id": "panel",
+        "title": "凭证保险库",
+        "description": "凭证管理、安全体检、审计与加密备份",
+        "route": "/panel.html",
+        "realization": "page",
+        "siteNavEntry": true,
+        "face": {
+          "image": "assets/cover.svg"
+        },
+        "pageIcon": "assets/nav.svg"
+      }
+    ]
+  }
+}
