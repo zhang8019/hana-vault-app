@@ -2,13 +2,14 @@
   "manifestVersion": 2,
   "id": "hana-vault",
   "name": "凭证保险库",
-  "version": "0.2.0",
+  "version": "0.3.5",
   "entry": "index.js",
-  "description": "加密凭证保险库 v2：兼容旧库格式，主密码仅存进程内存，支持安全检索、TOTP、审计、安全体检与加密备份。",
+  "description": "加密凭证保险库 v2：兼容旧库格式，主密码默认仅存进程内存；可选本机自动解锁（凭据以本机绑定的密钥封装于本机）。支持安全检索、TOTP、审计、安全体检与加密备份。",
   "minAppVersion": "1.0.6-beta",
   "icon": "assets/icon.svg",
   "capabilities": [
     "app/tools.expose-to-model",
+    "app/sessions.read",
     "app/ui.clipboard-write",
     "app/resources.write"
   ],
@@ -26,6 +27,19 @@
         },
         "pageIcon": "assets/nav.svg"
       }
-    ]
+    ],
+    "settings": {
+      "title": "凭证保险库安全策略",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "accessMode": {"type":"string","title":"访问模式","enum":["readonly","ask","auto"],"default":"ask","scope":"global"},
+          "autoCapture": {"type":"boolean","title":"自动捕获线索","default":false,"scope":"global"},
+          "rememberDevice": {"type":"boolean","title":"本机自动解锁（记住这台设备）","default":false,"scope":"global"},
+          "lockTimeoutSeconds": {"type":"integer","title":"自动锁定（秒）","default":900,"scope":"global"},
+          "vaultName": {"type":"string","title":"保险库名称","default":"default","scope":"global"}
+        }
+      }
+    }
   }
 }

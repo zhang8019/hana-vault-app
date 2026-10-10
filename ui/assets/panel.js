@@ -29,8 +29,12 @@ async function refreshStatus() {
   } catch (e) { $('vaultMeta').textContent = `接口不可用：${e.message}`; setNotice(e.message,true); }
 }
 async function loadSettings() {
-  const { settings } = await request('/settings');
-  $('cfgMode').value=settings.accessMode; $('cfgLock').value=settings.lockTimeoutSeconds; $('cfgName').value=settings.vaultName; $('cfgCapture').checked=settings.autoCapture; $('cfgMutationConsent').checked=settings.mutationsConfirmed;
+  const { settings, grants = [], authorizationStore = { ready: true } } = await request('/settings');
+  $('cfgMode').value=settings.accessMode; $('cfgLock').value=settings.lockTimeoutSeconds; $('cfgName').value=settings.vaultName; $('cfgCapture').checked=settings.autoCapture; $('cfgRememberDevice').checked=Boolean(settings.rememberDevice);
+  $('authStoreWarning').hidden=authorizationStore.ready; $('authStoreWarning').textContent=authorizationStore.ready?'':'授权文件损坏或不可读，Agent 凭证操作已关闭。修复会清空所有长期授权。'; $('btnRepairAuth').hidden=authorizationStore.ready;
+  $('btnRepairAuth').onclick=async()=>{if(!confirm('确认清空损坏的授权文件并重建？现有长期授权将全部失效。'))return;await request('/settings',{method:'POST',body:JSON.stringify({repairAuthorizationStore:true})});await loadSettings();};
+  $('agentGrants').innerHTML=grants.length?`<p class="muted">当前 ${grants.length} 条长期授权，涉及 ${new Set(grants.map(g=>g.agentId)).size} 个 Agent。<button type="button" id="openAuthFromSettings" class="ghost">查看与撤销</button></p>`:'<p class="muted">暂无长期授权</p>';
+  if($('openAuthFromSettings'))$('openAuthFromSettings').onclick=()=>openAuthorization().catch((e)=>setNotice(e.message,true));
 }
 async function loadRows() {
   if (!state.status?.open) return;
@@ -72,6 +76,20 @@ async function showHealth() {
   $('modal').hidden=false;$('modalOk').hidden=true;$('modalCancel').textContent='关闭';
 }
 async function openAudit() { const {events}=await request('/audit?limit=100'); $('modalTitle').textContent='近期安全审计'; $('modalBody').innerHTML=events.length?`<ul class="audit-list">${events.map(e=>`<li><strong>${esc(e.kind)}</strong> · ${esc(e.title||e.vaultName||e.id||'')}<span>${esc(e.at)}</span></li>`).join('')}</ul>`:'<p class="muted">暂无记录</p>'; $('modal').hidden=false;$('modalOk').hidden=true;$('modalCancel').textContent='关闭'; }
+const fmtTime=(t)=>{try{return new Date(t).toLocaleString('zh-CN')}catch{return String(t||'')}};
+async function openAuthorization(){
+  const [{grants},{events}]=await Promise.all([request('/grants'),request('/audit?limit=100')]);
+  const byAgent=new Map();
+  for(const g of grants){const k=g.agentId||'未知';if(!byAgent.has(k))byAgent.set(k,{name:g.agentName||g.agentId,items:[]});byAgent.get(k).items.push(g);}
+  const grantBlocks=byAgent.size?[...byAgent.entries()].map(([agentId,info])=>`<div class="audit-row"><div><strong>${esc(info.name)}</strong> <span class="muted">${esc(agentId)}</span> · ${info.items.length} 条长期授权 <button type="button" data-revoke-agent="${esc(agentId)}">撤销该 Agent 全部</button></div><ul class="audit-list">${info.items.map(g=>`<li>${esc(g.credentialLabel||g.credentialId)}${g.category?`（${esc(g.category)}）`:''} · 动作 ${esc(g.action)} · 字段 ${esc((g.fields||[]).join('、')||'无')} · 授权于 ${esc(fmtTime(g.createdAt))} <button type="button" data-revoke-grant="${esc(g.id)}">撤销此条</button></li>`).join('')}</ul></div>`).join(''):'<p class="muted">当前没有任何长期授权。Agent 每次访问都会弹授权卡让你确认。</p>';
+  const agentEvents=events.filter(e=>e.agentId);
+  const auditBlocks=agentEvents.length?`<ul class="audit-list">${agentEvents.map(e=>`<li><strong>${esc(e.kind)}</strong> · ${esc(e.agentName||e.agentId)}${e.action?` · ${esc(e.action)}`:''}${e.credentialId&&e.credentialId!=='*'?` · ${esc(e.credentialId)}`:''}${e.persistent!==undefined?` · ${e.persistent?'长期':'单次'}`:''}<span>${esc(fmtTime(e.at))}</span></li>`).join('')}</ul>`:'<p class="muted">暂无 Agent 调用记录。</p>';
+  $('modalTitle').textContent='授权与审计';
+  $('modalBody').innerHTML=`<h3>当前长期授权</h3><p class="hint">长期授权绑定具体库、Agent、凭证、动作与字段；撤销后该 Agent 下次调用会重新弹卡。</p>${grantBlocks}<h3>近期 Agent 调用</h3>${auditBlocks}`;
+  $('modal').hidden=false;$('modalOk').hidden=true;$('modalCancel').textContent='关闭';
+  $('modalBody').querySelectorAll('[data-revoke-grant]').forEach(b=>b.onclick=async()=>{if(!confirm('撤销这条长期授权？该 Agent 以后每次调用都会重新询问。'))return;await request('/grants/revoke-grant',{method:'POST',body:JSON.stringify({grantId:b.dataset.revokeGrant})});setNotice('已撤销该长期授权。');await openAuthorization();await loadSettings().catch(()=>{});});
+  $('modalBody').querySelectorAll('[data-revoke-agent]').forEach(b=>b.onclick=async()=>{if(!confirm('撤销该 Agent 的全部长期授权？'))return;await request('/grants/revoke',{method:'POST',body:JSON.stringify({agentId:b.dataset.revokeAgent})});setNotice('已撤销该 Agent 的全部长期授权。');await openAuthorization();await loadSettings().catch(()=>{});});
+}
 async function generatePassword() { const {value,strength}=await request('/generate-password',{method:'POST',body:JSON.stringify({length:24})}); $('modalTitle').textContent='强随机口令'; $('modalBody').innerHTML=`<label class="full">口令<textarea id="generated" readonly>${esc(value)}</textarea></label><p>强度 ${esc(strength.score)}/100（${esc(strength.verdict)}）</p>`; $('modal').hidden=false;$('modalOk').hidden=false;$('modalOk').textContent='复制并关闭';$('modalOk').onclick=async()=>{const ok=await copyText(value);$('modal').hidden=true;setNotice(ok?'已复制；口令未写入日志。':'口令未复制：此环境不允许写剪贴板。',!ok);}; }
 function toBase64(text){const bytes=new TextEncoder().encode(text);let bin='';for(let i=0;i<bytes.length;i+=0x8000){bin+=String.fromCharCode(...bytes.subarray(i,i+0x8000));}return btoa(bin);}
 async function exportBackup(){const password=prompt('设置独立导出密码（至少 12 个字符）。不会保存到设置或日志。');if(password===null)return;if(password.length<12){setNotice('导出密码至少 12 个字符。',true);return;}const {encryptedBackup}=await request('/export',{method:'POST',body:JSON.stringify({password})});const saved=await hana.resources.saveFile({suggestedName:`hana-vault-backup-${new Date().toISOString().slice(0,10)}.json`,mimeType:'application/json',contentBase64:toBase64(encryptedBackup)});if(saved?.kind==='saved')setNotice('加密备份已保存。请妥善保管导出密码。');else if(saved?.kind==='canceled')setNotice('已取消保存。');else setNotice(`保存未完成（${saved?.kind||'未知'}）。`,true);}
@@ -80,11 +98,11 @@ async function boot(){ try{await hana.ready();}catch{} await refreshStatus(); }
 $('btnUnlock').onclick=async()=>{const password=$('unlockPwd').value;if(!password){$('unlockError').textContent='请输入主密码';return;}try{$('btnUnlock').disabled=true;const {status}=await request('/unlock',{method:'POST',body:JSON.stringify({password,vaultName:$('vaultName').value})});$('unlockPwd').value='';$('unlockError').textContent='';state.status=status;await refreshStatus();await loadRows();setNotice('已解锁。主密码未保存。');}catch(e){$('unlockError').textContent=e.message;}finally{$('btnUnlock').disabled=false;}};
 $('btnLock').onclick=async()=>{await request('/lock',{method:'POST'});await refreshStatus();setNotice('保险库已锁定，内存密钥已清除。');};
 $('btnSettings').onclick=toggleSettings;
-$('btnSaveCfg').onclick=async()=>{const settings={accessMode:$('cfgMode').value,lockTimeoutSeconds:Number($('cfgLock').value)||900,vaultName:$('cfgName').value||'default',autoCapture:$('cfgCapture').checked,mutationsConfirmed:$('cfgMutationConsent').checked};await request('/settings',{method:'POST',body:JSON.stringify(settings)});$('cfgMsg').textContent='策略已保存';await refreshStatus();};
-$('btnAdd').onclick=()=>openEditor(); $('btnGen').onclick=()=>generatePassword().catch(e=>setNotice(e.message,true));$('btnHealth').onclick=()=>showHealth().catch(e=>setNotice(e.message,true));$('btnAudit').onclick=()=>openAudit().catch(e=>setNotice(e.message,true));$('btnExport').onclick=()=>exportBackup().catch(e=>setNotice(e.message,true));
+$('btnSaveCfg').onclick=async()=>{const settings={accessMode:$('cfgMode').value,lockTimeoutSeconds:Number($('cfgLock').value)||900,vaultName:$('cfgName').value||'default',autoCapture:$('cfgCapture').checked,rememberDevice:$('cfgRememberDevice').checked};await request('/settings',{method:'POST',body:JSON.stringify(settings)});$('cfgMsg').textContent='策略已保存';await refreshStatus();};
+$('btnAdd').onclick=()=>openEditor(); $('btnAuth').onclick=()=>openAuthorization().catch(e=>setNotice(e.message,true)); $('btnGen').onclick=()=>generatePassword().catch(e=>setNotice(e.message,true));$('btnHealth').onclick=()=>showHealth().catch(e=>setNotice(e.message,true));$('btnAudit').onclick=()=>openAudit().catch(e=>setNotice(e.message,true));$('btnExport').onclick=()=>exportBackup().catch(e=>setNotice(e.message,true));
 $('btnTrash').onclick=async()=>{state.trash=!state.trash;$('btnTrash').textContent=state.trash?'退出回收站':'回收站';state.selected=null;$('detail').innerHTML='<p class="muted">选择凭证查看。</p>';await loadRows();};
 $('search').oninput=()=>{clearTimeout(window.__vaultSearch);window.__vaultSearch=setTimeout(()=>loadRows().catch(e=>setNotice(e.message,true)),220);};$('kindFilter').onchange=()=>loadRows().catch(e=>setNotice(e.message,true));
 $('modalCancel').onclick=()=>{$('modal').hidden=true;$('modalOk').hidden=false;$('modalOk').textContent='保存';$('modalCancel').textContent='取消';};$('modal').onclick=(e)=>{if(e.target===$('modal'))$('modalCancel').click();};
 // 离开页面时尽力锁定；锁不上也不阻塞关闭（服务端仍有空闲自动锁定兼底）。
-window.addEventListener('pagehide',()=>{if(state.status?.open){try{void request('/lock',{method:'POST'});}catch{}}});
+window.addEventListener('pagehide',()=>{if(state.status?.open){try{void request('/lock',{method:'POST',body:JSON.stringify({reason:'pagehide'})});}catch{}}});
 boot().catch((e)=>setNotice(e.message,true));
